@@ -1,33 +1,39 @@
 import { graphql } from "@octokit/graphql";
+import { Octokit } from "@octokit/rest";
 
+import type { RemoteIssue, RemoteLabel, RemoteMilestone } from "../sync/diff";
 import type {
   AddToProjectMutationResponse,
-  AddToProjectParams,
-  CheckProjectMembershipQueryResponse,
   CreateIssueMutationResponse,
-  CreateIssueParams,
   CreateLabelMutationResponse,
-  CreateLabelParams,
-  GetLabelQueryResponse,
-  GetProjectIdParams,
-  GetProjectQueryResponse,
-  GetRepositoryIdQueryResponse,
-  SearchIssueQueryResponse,
+  CreateProjectMutationResponse,
+  GetProjectsQueryResponse,
+  GetRepoQueryResponse,
+  ListIssuesQueryResponse,
+  ListLabelsQueryResponse,
+  ListProjectItemsQueryResponse,
+  PageInfo,
+  ProjectInfo,
+  ProjectNode,
+  UpdateFieldOptionsMutationResponse,
 } from "./types";
 
 import {
   ADD_TO_PROJECT_MUTATION,
+  CLOSE_ISSUE_MUTATION,
   CREATE_ISSUE_MUTATION,
   CREATE_LABEL_MUTATION,
-  LINK_ISSUES_MUTATION,
+  CREATE_PROJECT_MUTATION,
+  UPDATE_FIELD_OPTIONS_MUTATION,
+  UPDATE_ISSUE_MUTATION,
   UPDATE_ITEM_STATUS_MUTATION,
 } from "./mutations";
 import {
-  CHECK_PROJECT_MEMBERSHIP_QUERY,
-  GET_LABEL_QUERY,
-  GET_PROJECT_QUERY,
-  GET_REPO_ID_QUERY,
-  SEARCH_ISSUE_QUERY,
+  GET_PROJECTS_QUERY,
+  GET_REPO_QUERY,
+  LIST_ISSUES_QUERY,
+  LIST_LABELS_QUERY,
+  LIST_PROJECT_ITEMS_QUERY,
 } from "./queries";
 
 const randomIssueLabelColors: string[] = [
@@ -50,8 +56,7 @@ function getNextRandomColor(): string {
 }
 
 let graphqlClient: typeof graphql | null = null;
-
-const projectItemsCache = new Map<string, Set<string>>();
+let restClient: Octokit | null = null;
 
 export function initClient(token: string) {
   graphqlClient = graphql.defaults({
@@ -59,330 +64,286 @@ export function initClient(token: string) {
       authorization: `token ${token}`,
     },
   });
+  restClient = new Octokit({ auth: token });
 }
 
-export async function getRepositoryId({
-  owner,
-  repo,
-}: GetProjectIdParams): Promise<string> {
+function gql() {
   if (!graphqlClient) {
     throw new Error("GraphQL client not initialized");
   }
-
-  const repoResponse = (await graphqlClient(GET_REPO_ID_QUERY, {
-    owner,
-    repo,
-  })) as GetRepositoryIdQueryResponse;
-
-  return repoResponse.repository.id;
+  return graphqlClient;
 }
 
-export async function getProjectInfo({
-  owner,
-  repo,
-}: GetProjectIdParams): Promise<
-  | {
-    projectId: string;
-    projectNumber: number;
-    fieldId: string;
-    optionId: string;
+function rest() {
+  if (!restClient) {
+    throw new Error("REST client not initialized");
   }
-  | undefined
-  > {
-  if (!graphqlClient) {
-    throw new Error("GraphQL client not initialized");
-  }
-  try {
-    const response = (await graphqlClient(GET_PROJECT_QUERY, {
-      owner,
-      repo,
-    })) as GetProjectQueryResponse;
-
-    const projects = response.repository.projectsV2.nodes;
-    if (!projects || projects.length === 0) {
-      throw new Error(
-        `No projects found in repository ${owner}/${repo}. Please ensure:
-1. The repository has at least one project (V2)
-2. The project is accessible to the authenticated user
-3. The GITHUB_TOKEN has the necessary permissions (project scope)`,
-      );
-    }
-
-    const project = projects[0];
-    const layout = project.views.nodes[0]?.layout;
-    console.log(
-      `Found project: ${project.title} (number: ${project.number}, layout: ${layout})`,
-    );
-
-    if (layout !== "BOARD_LAYOUT") {
-      throw new Error(
-        `Project "${project.title}" is not a board view project. It is currently in ${layout} view.
-To fix this:
-1. Go to the project settings
-2. Click "Layout"
-3. Select "Board" view
-4. Add a "Backlog" column`,
-      );
-    }
-
-    const statusField = project.fields.nodes.find(
-      field => field.name === "Status",
-    );
-    if (!statusField) {
-      throw new Error(
-        `No Status field found in project "${project.title}".
-Please add a "Status" field to your project.`,
-      );
-    }
-
-    const backlogOption = statusField.options?.find(
-      option => option.name === "Backlog",
-    );
-    if (!backlogOption) {
-      throw new Error(
-        `No "Backlog" option found in Status field. Available options: ${statusField.options
-          ?.map(o => o.name)
-          .join(", ")}.
-Please add a "Backlog" option to your Status field.`,
-      );
-    }
-
-    return {
-      projectId: project.id,
-      projectNumber: project.number,
-      fieldId: statusField.id,
-      optionId: backlogOption.id,
-    };
-  }
-  catch (error) {
-    if (error instanceof Error) {
-      console.error(error);
-      throw new TypeError(
-        `Failed to get project information: ${error.message}`,
-      );
-    }
-    throw error;
-  }
+  return restClient;
 }
 
-export async function createLabelIfNotExists({
-  label,
-  repositoryId,
-}: CreateLabelParams) {
-  try {
-    if (!graphqlClient) {
-      throw new Error("GraphQL client not initialized");
-    }
-
-    const labelResponse = (await graphqlClient(GET_LABEL_QUERY, {
-      repoId: repositoryId,
-      name: label.name,
-    })) as GetLabelQueryResponse;
-
-    if (labelResponse.node.label) {
-      console.log(`Label "${label.name}" already exists`);
-      return labelResponse.node.label;
-    }
-
-    const color = label.color || getNextRandomColor();
-
-    console.log("Creating label:", {
-      name: label.name,
-    });
-
-    const createLabelResponse = (await graphqlClient(CREATE_LABEL_MUTATION, {
-      repoId: repositoryId,
-      name: label.name,
-      color,
-      description: label.description || "",
-    })) as CreateLabelMutationResponse;
-
-    return createLabelResponse.createLabel.label;
-  }
-  catch (error) {
-    if (error instanceof Error) {
-      console.error(error);
-      throw new TypeError(
-        `Failed to create label "${label.name}": ${error.message}`,
-      );
-    }
-    throw error;
-  }
+async function paginate<T, R>(
+  fetchPage: (after: string | null) => Promise<R>,
+  getConnection: (response: R) => { pageInfo: PageInfo; nodes: T[] },
+): Promise<T[]> {
+  const results: T[] = [];
+  let after: string | null = null;
+  do {
+    const connection = getConnection(await fetchPage(after));
+    results.push(...connection.nodes);
+    after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+  } while (after);
+  return results;
 }
 
-export async function createIssue({
-  issue,
-  labelId,
-  repositoryId,
-  owner,
-  repo,
-}: CreateIssueParams) {
-  if (!graphqlClient) {
-    throw new Error("GraphQL client not initialized");
-  }
+export type RepoParams = {
+  owner: string;
+  repo: string;
+};
 
-  const searchQuery = `repo:${owner}/${repo} is:issue in:title "${issue.title.trim()}"`;
-  const searchResponse = (await graphqlClient(SEARCH_ISSUE_QUERY, {
-    searchQuery,
-  })) as SearchIssueQueryResponse;
-
-  const existingIssues = searchResponse.search.nodes;
-  if (existingIssues.length > 0) {
-    const existingIssue = existingIssues[0];
-    console.log(
-      `Found existing issue #${existingIssue.number} with title "${existingIssue.title}"`,
-    );
-
-    const hasLabel = existingIssue.labels.nodes.some(
-      label => label.id === labelId,
-    );
-    if (!hasLabel) {
-      console.log(`Adding label to existing issue #${existingIssue.number}`);
-      await graphqlClient(CREATE_LABEL_MUTATION, {
-        issueId: existingIssue.id,
-        labelIds: [labelId],
-      });
-    }
-
-    if (issue.parentIssueId) {
-      console.log(`Checking parent issue link for #${existingIssue.number}`);
-      const currentParentId = existingIssue.parent?.id;
-
-      if (currentParentId !== issue.parentIssueId) {
-        console.log(
-          `Linking existing issue ${existingIssue.number} to parent issue ${issue.parentIssueId}`,
-        );
-        await graphqlClient(LINK_ISSUES_MUTATION, {
-          issueId: existingIssue.id,
-          parentId: issue.parentIssueId,
-        });
-        console.log(
-          `Linked existing issue ${existingIssue.number} to parent issue ${issue.parentIssueId}`,
-        );
-      }
-      else {
-        console.log(
-          `Issue #${existingIssue.number} is already linked to parent issue ${issue.parentIssueId}`,
-        );
-      }
-    }
-
-    return existingIssue.id;
-  }
-
-  console.log("Creating new issue:", {
-    title: issue.title,
-    parentIssueId: issue.parentIssueId,
-  });
-
-  const createResponse = (await graphqlClient(CREATE_ISSUE_MUTATION, {
-    repoId: repositoryId,
-    title: issue.title.trim(),
-    body: issue.body,
-    labelIds: [labelId],
-  })) as CreateIssueMutationResponse;
-
-  const newIssueId = createResponse.createIssue.issue.id;
-  const newIssueNumber = createResponse.createIssue.issue.number;
-  console.log(`Created issue #${newIssueNumber} with ID: ${newIssueId}`);
-
-  if (issue.parentIssueId) {
-    await graphqlClient(LINK_ISSUES_MUTATION, {
-      issueId: newIssueId,
-      parentId: issue.parentIssueId,
-    });
-    console.log(
-      `Linked issue ${newIssueNumber} to parent issue ${issue.parentIssueId}`,
-    );
-  }
-
-  return newIssueId;
+export async function getRepository({ owner, repo }: RepoParams) {
+  const response = await gql()<GetRepoQueryResponse>(GET_REPO_QUERY, { owner, repo });
+  return {
+    repositoryId: response.repository.id,
+    ownerId: response.repository.owner.id,
+  };
 }
 
-async function getProjectItems(projectId: string): Promise<Set<string>> {
-  if (!graphqlClient) {
-    throw new Error("GraphQL client not initialized");
-  }
+// Projects
 
-  const cachedItems = projectItemsCache.get(projectId);
-  if (cachedItems) {
-    return cachedItems;
-  }
-
-  const membershipResponse = (await graphqlClient(
-    CHECK_PROJECT_MEMBERSHIP_QUERY,
-    {
-      projectId,
-    },
-  )) as CheckProjectMembershipQueryResponse;
-
-  const items = new Set(
-    membershipResponse.node.items.nodes
-      .map(item => item.content?.id)
-      .filter((id): id is string => id !== undefined),
-  );
-
-  projectItemsCache.set(projectId, items);
-  return items;
+export async function findProject({ owner, repo, title }: RepoParams & { title: string }): Promise<ProjectNode | undefined> {
+  const response = await gql()<GetProjectsQueryResponse>(GET_PROJECTS_QUERY, { owner, repo, title });
+  return response.repository.projectsV2.nodes.find(project => project.title === title);
 }
 
-export async function addToProject({
-  issueId,
-  projectInfo,
-}: AddToProjectParams): Promise<void> {
-  if (!graphqlClient) {
-    throw new Error("GraphQL client not initialized");
-  }
-  try {
-    const projectItems = await getProjectItems(projectInfo.projectId);
-
-    if (projectItems.has(issueId)) {
-      console.log(`Issue ${issueId} is already in the project`);
-      return;
-    }
-
-    console.log(`Adding issue ${issueId} to project`);
-    const addResponse = (await graphqlClient(ADD_TO_PROJECT_MUTATION, {
-      projectId: projectInfo.projectId,
-      contentId: issueId,
-    })) as AddToProjectMutationResponse;
-
-    projectItems.add(issueId);
-
-    await graphqlClient(UPDATE_ITEM_STATUS_MUTATION, {
-      projectId: projectInfo.projectId,
-      itemId: addResponse.addProjectV2ItemById.item.id,
-      fieldId: projectInfo.fieldId,
-      optionId: projectInfo.optionId,
-    });
-
-    console.log(`Added issue ${issueId} to project and set status to Backlog`);
-  }
-  catch (error) {
-    if (error instanceof Error) {
-      console.error(error);
-      throw new TypeError(`Failed to add issue to project: ${error.message}`);
-    }
-    throw error;
-  }
-}
-
-export async function createIssueAddToProject({
-  issue,
-  labelId,
-  projectInfo,
-  repositoryId,
-  owner,
-  repo,
-}: CreateIssueParams): Promise<string> {
-  const issueId = await createIssue({
-    issue,
-    projectInfo,
+export async function createProject({ ownerId, repositoryId, title }: {
+  ownerId: string;
+  repositoryId: string;
+  title: string;
+}): Promise<ProjectNode> {
+  const response = await gql()<CreateProjectMutationResponse>(CREATE_PROJECT_MUTATION, {
+    ownerId,
     repositoryId,
-    labelId,
+    title,
+  });
+  return response.createProjectV2.projectV2;
+}
+
+// Resolves the Status field and the option new issues are placed in. When `addMissingOption` is set
+// (only safe for a freshly created project, since rewriting the options resets existing items' status),
+// the option is added to the front of the Status field.
+export async function getProjectInfo(project: ProjectNode, statusName: string, addMissingOption: boolean): Promise<ProjectInfo> {
+  const layout = project.views.nodes[0]?.layout;
+  if (layout !== "BOARD_LAYOUT") {
+    console.warn(
+      `Project "${project.title}" view is ${layout ?? "unknown"}. Switch it to a Board layout in the project's view settings: ${project.url}`,
+    );
+  }
+
+  const statusField = project.fields.nodes.find(field => field.name === "Status");
+  if (!statusField?.id || !statusField.options) {
+    throw new Error(
+      `No Status field found in project "${project.title}".
+Please add a "Status" single select field to your project.`,
+    );
+  }
+
+  let option = statusField.options.find(option => option.name === statusName);
+  if (!option && addMissingOption) {
+    console.log(`Adding "${statusName}" option to the Status field`);
+    const response = await gql()<UpdateFieldOptionsMutationResponse>(UPDATE_FIELD_OPTIONS_MUTATION, {
+      fieldId: statusField.id,
+      options: [
+        { name: statusName, color: "GRAY", description: "" },
+        ...statusField.options.map(({ name, color, description }) => ({ name, color, description })),
+      ],
+    });
+    option = response.updateProjectV2Field.projectV2Field.options.find(option => option.name === statusName);
+  }
+
+  if (!option) {
+    throw new Error(
+      `No "${statusName}" option found in Status field. Available options: ${statusField.options
+        .map(o => o.name)
+        .join(", ")}.
+Please add a "${statusName}" option to your Status field, or set "status" in .project/config.json.`,
+    );
+  }
+
+  return {
+    projectId: project.id,
+    title: project.title,
+    url: project.url,
+    fieldId: statusField.id,
+    optionId: option.id,
+  };
+}
+
+export async function listProjectIssueIds(projectId: string): Promise<Set<string>> {
+  const items = await paginate(
+    after => gql()<ListProjectItemsQueryResponse>(LIST_PROJECT_ITEMS_QUERY, { projectId, after }),
+    response => response.node.items,
+  );
+  return new Set(items.map(item => item.content?.id).filter((id): id is string => !!id));
+}
+
+export async function addToProject({ issueId, projectInfo }: {
+  issueId: string;
+  projectInfo: ProjectInfo;
+}): Promise<void> {
+  const addResponse = await gql()<AddToProjectMutationResponse>(ADD_TO_PROJECT_MUTATION, {
+    projectId: projectInfo.projectId,
+    contentId: issueId,
+  });
+
+  await gql()(UPDATE_ITEM_STATUS_MUTATION, {
+    projectId: projectInfo.projectId,
+    itemId: addResponse.addProjectV2ItemById.item.id,
+    fieldId: projectInfo.fieldId,
+    optionId: projectInfo.optionId,
+  });
+}
+
+// Labels
+
+export async function listLabels({ owner, repo }: RepoParams): Promise<RemoteLabel[]> {
+  return paginate(
+    after => gql()<ListLabelsQueryResponse>(LIST_LABELS_QUERY, { owner, repo, after }),
+    response => response.repository.labels,
+  );
+}
+
+export async function createLabel({ repositoryId, name }: {
+  repositoryId: string;
+  name: string;
+}): Promise<RemoteLabel> {
+  const response = await gql()<CreateLabelMutationResponse>(CREATE_LABEL_MUTATION, {
+    repoId: repositoryId,
+    name,
+    color: getNextRandomColor(),
+    description: "",
+  });
+  return response.createLabel.label;
+}
+
+// Milestones (no GraphQL mutations exist for milestones, so these use REST)
+
+type MilestoneFields = {
+  title: string;
+  description: string;
+  dueOn: string | null;
+  state: "open" | "closed";
+};
+
+// GitHub stores due dates in US Pacific time; midday UTC keeps the intended calendar date.
+function toDueOn(date: string | null) {
+  return date ? `${date}T12:00:00Z` : null;
+}
+
+function toRemoteMilestone(milestone: {
+  number: number;
+  node_id: string;
+  title: string;
+  description: string | null;
+  due_on: string | null;
+  state: string;
+}): RemoteMilestone {
+  return {
+    number: milestone.number,
+    nodeId: milestone.node_id,
+    title: milestone.title,
+    description: milestone.description,
+    dueOn: milestone.due_on,
+    state: milestone.state === "closed" ? "closed" : "open",
+  };
+}
+
+export async function listMilestones({ owner, repo }: RepoParams): Promise<RemoteMilestone[]> {
+  const milestones = await rest().paginate(rest().issues.listMilestones, {
     owner,
     repo,
+    state: "all",
+    per_page: 100,
   });
-  await addToProject({ issueId, projectInfo });
-  return issueId;
+  return milestones.map(toRemoteMilestone);
+}
+
+export async function createMilestone({ owner, repo, milestone }: RepoParams & {
+  milestone: Omit<MilestoneFields, "state">;
+}): Promise<RemoteMilestone> {
+  const response = await rest().issues.createMilestone({
+    owner,
+    repo,
+    title: milestone.title,
+    description: milestone.description,
+    ...(milestone.dueOn ? { due_on: toDueOn(milestone.dueOn)! } : {}),
+  });
+  return toRemoteMilestone(response.data);
+}
+
+export async function updateMilestone({ owner, repo, number, milestone }: RepoParams & {
+  number: number;
+  milestone: Partial<MilestoneFields>;
+}): Promise<RemoteMilestone> {
+  const response = await rest().request("PATCH /repos/{owner}/{repo}/milestones/{milestone_number}", {
+    owner,
+    repo,
+    milestone_number: number,
+    ...(milestone.title !== undefined ? { title: milestone.title } : {}),
+    ...(milestone.description !== undefined ? { description: milestone.description } : {}),
+    // The API accepts null to clear the due date, though the typings don't allow it
+    ...(milestone.dueOn !== undefined ? { due_on: toDueOn(milestone.dueOn) as string } : {}),
+    ...(milestone.state !== undefined ? { state: milestone.state } : {}),
+  });
+  return toRemoteMilestone(response.data);
+}
+
+// Issues
+
+export async function listIssues({ owner, repo }: RepoParams): Promise<RemoteIssue[]> {
+  const issues = await paginate(
+    after => gql()<ListIssuesQueryResponse>(LIST_ISSUES_QUERY, { owner, repo, after }),
+    response => response.repository.issues,
+  );
+  return issues.map(issue => ({
+    id: issue.id,
+    number: issue.number,
+    title: issue.title,
+    body: issue.body,
+    state: issue.state,
+    milestoneId: issue.milestone?.id ?? null,
+    labels: issue.labels.nodes,
+  }));
+}
+
+export type IssueFields = {
+  title: string;
+  body: string;
+  labelIds: string[];
+  milestoneId: string | null;
+};
+
+export async function createIssue({ repositoryId, issue }: {
+  repositoryId: string;
+  issue: IssueFields;
+}) {
+  const response = await gql()<CreateIssueMutationResponse>(CREATE_ISSUE_MUTATION, {
+    repoId: repositoryId,
+    ...issue,
+  });
+  return response.createIssue.issue;
+}
+
+export async function updateIssue({ id, issue }: {
+  id: string;
+  issue: IssueFields;
+}) {
+  await gql()(UPDATE_ISSUE_MUTATION, {
+    id,
+    ...issue,
+    state: "OPEN",
+  });
+}
+
+export async function closeIssue(id: string) {
+  await gql()(CLOSE_ISSUE_MUTATION, { id });
 }

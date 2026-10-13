@@ -136,3 +136,4 @@ dist
 .pnp.*
 
 scratch
+.DS_Store

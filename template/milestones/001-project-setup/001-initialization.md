@@ -1,5 +1,5 @@
 ---
-title: project setup / initialization
+title: Project Setup / Initialization
 label: Project Setup
 role:
 action:
@@ -10,4 +10,4 @@ benefit:
 - [ ] Git repository is initialized with appropriate `.gitignore`
 - [ ] `README.md` includes setup instructions
 - [ ] Base project is pushed to GitHub
-- [ ] GitHub auto-deploy configured
+- [ ] Automatic deployment from the main branch is configured

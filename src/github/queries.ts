@@ -1,50 +1,19 @@
-export const GET_REPO_ID_QUERY = `
-  query GetRepoId($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      id
+const PROJECT_FIELDS = `
+  id
+  title
+  number
+  url
+  views(first: 1) {
+    nodes {
+      layout
     }
   }
-`;
-
-export const GET_PROJECT_QUERY = `
-  query GetProject($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      projectsV2(first: 1) {
-        nodes {
-          id
-          title
-          number
-          views(first: 1) {
-            nodes {
-              ... on ProjectV2View {
-                layout
-              }
-            }
-          }
-          fields(first: 20) {
-            nodes {
-              ... on ProjectV2SingleSelectField {
-                id
-                name
-                dataType
-                options {
-                  id
-                  name
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
-export const GET_LABEL_QUERY = `
-  query GetLabel($repoId: ID!, $name: String!) {
-    node(id: $repoId) {
-      ... on Repository {
-        label(name: $name) {
+  fields(first: 50) {
+    nodes {
+      ... on ProjectV2SingleSelectField {
+        id
+        name
+        options {
           id
           name
           color
@@ -55,23 +24,68 @@ export const GET_LABEL_QUERY = `
   }
 `;
 
-export const SEARCH_ISSUE_QUERY = `
-  query SearchIssue($searchQuery: String!) {
-    search(query: $searchQuery, type: ISSUE, first: 1) {
-      nodes {
-        ... on Issue {
+export const GET_REPO_QUERY = `
+  query GetRepo($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      id
+      owner {
+        id
+      }
+    }
+  }
+`;
+
+export const GET_PROJECTS_QUERY = `
+  query GetProjects($owner: String!, $repo: String!, $title: String!) {
+    repository(owner: $owner, name: $repo) {
+      projectsV2(first: 100, query: $title) {
+        nodes {
+          ${PROJECT_FIELDS}
+        }
+      }
+    }
+  }
+`;
+
+export const LIST_LABELS_QUERY = `
+  query ListLabels($owner: String!, $repo: String!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      labels(first: 100, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
+export const LIST_ISSUES_QUERY = `
+  query ListIssues($owner: String!, $repo: String!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      issues(first: 100, after: $after, states: [OPEN, CLOSED], orderBy: { field: CREATED_AT, direction: ASC }) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
           id
           number
           title
           body
-          labels(first: 10) {
+          state
+          milestone {
+            id
+          }
+          labels(first: 50) {
             nodes {
               id
               name
             }
-          }
-          parent {
-            id
           }
         }
       }
@@ -79,17 +93,19 @@ export const SEARCH_ISSUE_QUERY = `
   }
 `;
 
-export const CHECK_PROJECT_MEMBERSHIP_QUERY = `
-  query CheckProjectMembership($projectId: ID!) {
+export const LIST_PROJECT_ITEMS_QUERY = `
+  query ListProjectItems($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           nodes {
-            id
             content {
               ... on Issue {
                 id
-                number
               }
             }
           }
@@ -98,3 +114,5 @@ export const CHECK_PROJECT_MEMBERSHIP_QUERY = `
     }
   }
 `;
+
+export { PROJECT_FIELDS };
