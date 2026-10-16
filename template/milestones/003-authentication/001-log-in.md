@@ -3,6 +3,7 @@ label: Authentication
 role: guest
 action: log in using my chosen authentication method
 benefit: I can access my personalized content
+state: open
 ---
 
 - [ ] "Login with ..." buttons initiate OAuth flow when clicked

@@ -14,3 +14,7 @@ export function readMarker(text: string | null | undefined): { kind: MarkerKind;
   }
   return { kind: match[1] as MarkerKind, id: match[2] };
 }
+
+export function stripMarker(text: string | null | undefined): string {
+  return (text ?? "").replace(new RegExp(MARKER.source, "g"), "").replace(/\r\n/g, "\n").trim();
+}

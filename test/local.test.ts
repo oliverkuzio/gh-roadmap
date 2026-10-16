@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { readLocalPlan } from "../src/local";
-import { parseMarkdown } from "../src/parse";
+import { parseMarkdown, updateMarkdown } from "../src/parse";
 
 const templateDir = join(import.meta.dirname, "../template");
 
@@ -18,6 +18,29 @@ describe("parseMarkdown", () => {
   it("handles empty frontmatter and no frontmatter", () => {
     expect(parseMarkdown("---\n---\nBody")).toEqual({ frontmatter: {}, description: "Body" });
     expect(parseMarkdown("Body")).toEqual({ frontmatter: {}, description: "Body" });
+  });
+});
+
+describe("updateMarkdown", () => {
+  it("sets keys and keeps comments, empty keys and the body", () => {
+    expect(updateMarkdown("---\ntitle: X # note\nrole:\n---\n\n- [ ] Done\n\n---\n\nMore\n", { state: "closed", role: null }))
+      .toBe("---\ntitle: X # note\nrole:\nstate: closed\n---\n\n- [ ] Done\n\n---\n\nMore\n");
+  });
+
+  it("returns the content untouched when nothing changes", () => {
+    const content = "---\ntitle:   X\nstate: open\n---\nBody";
+    expect(updateMarkdown(content, { title: "X", state: "open", role: null }, "Body\n")).toBe(content);
+  });
+
+  it("quotes values and replaces the body", () => {
+    expect(updateMarkdown("---\ntitle: X\n---\n\nOld\n", { title: "Fix: colons" }, "New"))
+      .toBe("---\ntitle: \"Fix: colons\"\n---\n\nNew\n");
+  });
+
+  it("handles missing and CRLF frontmatter", () => {
+    expect(updateMarkdown("Body\n", { state: "open" })).toBe("---\nstate: open\n---\n\nBody\n");
+    expect(updateMarkdown("---\r\ntitle: X\r\n---\r\n\r\nOld\r\n", { state: "open" }, "A\nB"))
+      .toBe("---\r\ntitle: X\r\nstate: open\r\n---\r\n\r\nA\r\nB\r\n");
   });
 });
 
@@ -91,5 +114,16 @@ describe("milestone folders", () => {
       "milestones/001-a/001-x.md": "---\ntitle: X\n---\n",
       "milestones/001-a/001-y.md": "---\ntitle: Y\n---\n",
     }))).toThrow("Duplicate story number 001 in 001-a");
+  });
+
+  it("reads the story state", () => {
+    const dir = planDir({
+      "milestones/001-a/milestone.md": "---\ntitle: A\n---\n",
+      "milestones/001-a/001-x.md": "---\ntitle: X\nstate: closed\n---\n",
+      "milestones/001-a/002-y.md": "---\ntitle: Y\n---\n",
+    });
+    expect(readLocalPlan(dir).stories.map(s => s.closed)).toEqual([true, false]);
+    writeFileSync(join(dir, "milestones/001-a/002-y.md"), "---\ntitle: Y\nstate: done\n---\n");
+    expect(() => readLocalPlan(dir)).toThrow("Invalid state \"done\"");
   });
 });

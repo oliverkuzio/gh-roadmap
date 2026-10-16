@@ -66,6 +66,7 @@ function readMilestone(folderPath: string, folder: string, id: string): LocalMil
     description,
     label: frontmatter.label?.trim() || frontmatter.title.trim(),
     dueOn: normalizeDate(frontmatter.due_on),
+    path: file,
   };
 }
 
@@ -75,9 +76,13 @@ function readStory(folderPath: string, folder: string, file: string, milestone: 
     throw new Error(`Story file "${folder}/${file}" must start with a three digit number, e.g. 001-name.md`);
   }
 
-  const { frontmatter, description } = parseMarkdown<StoryFrontMatter>(
-    readFileSync(join(folderPath, file), "utf-8"),
-  );
+  const path = join(folderPath, file);
+  const { frontmatter, description } = parseMarkdown<StoryFrontMatter>(readFileSync(path, "utf-8"));
+
+  const state = frontmatter.state ?? "open";
+  if (state !== "open" && state !== "closed") {
+    throw new Error(`Invalid state "${state}" for story ${folder}/${file}, expected open or closed`);
+  }
 
   const title = frontmatter.role
     ? `As a ${frontmatter.role}, I want to ${frontmatter.action}`
@@ -97,6 +102,8 @@ function readStory(folderPath: string, folder: string, file: string, milestone: 
     title: title.trim(),
     body: body.trim(),
     label: frontmatter.label?.trim() || milestone.label,
+    closed: state === "closed",
+    path,
   };
 }
 

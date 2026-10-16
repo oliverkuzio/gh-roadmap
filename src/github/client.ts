@@ -333,17 +333,19 @@ export async function createIssue({ repositoryId, issue }: {
   return response.createIssue.issue;
 }
 
-export async function updateIssue({ id, issue }: {
+// The state is left as is unless `reopen` is set
+export async function updateIssue({ id, issue, reopen }: {
   id: string;
   issue: IssueFields;
+  reopen: boolean;
 }) {
   await gql()(UPDATE_ISSUE_MUTATION, {
     id,
     ...issue,
-    state: "OPEN",
+    ...(reopen ? { state: "OPEN" } : {}),
   });
 }
 
-export async function closeIssue(id: string) {
-  await gql()(CLOSE_ISSUE_MUTATION, { id });
+export async function closeIssue(id: string, reason: "COMPLETED" | "NOT_PLANNED") {
+  await gql()(CLOSE_ISSUE_MUTATION, { id, reason });
 }

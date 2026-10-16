@@ -1,52 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { RemoteIssue, RemoteMilestone, RemoteState } from "../src/sync/diff";
 import type { LocalPlan } from "../src/types";
 
-import { diff, milestoneDescription, storyBody } from "../src/sync/diff";
-
-const local: LocalPlan = {
-  milestones: [
-    { id: "001", title: "Setup", description: "Setup things", label: "Setup", dueOn: "2026-12-01" },
-    { id: "002", title: "UI", description: "", label: "UI", dueOn: null },
-  ],
-  stories: [
-    { id: "001-001", milestoneId: "001", title: "Init", body: "Do init", label: "Setup" },
-    { id: "002-001", milestoneId: "002", title: "Navbar", body: "Add navbar", label: "UI" },
-  ],
-};
-
-function syncedMilestones(): RemoteMilestone[] {
-  return local.milestones.map((milestone, index) => ({
-    number: index + 1,
-    nodeId: `M${index + 1}`,
-    title: milestone.title,
-    description: milestoneDescription(milestone),
-    dueOn: milestone.dueOn ? `${milestone.dueOn}T08:00:00Z` : null,
-    state: "open",
-  }));
-}
-
-function syncedIssues(): RemoteIssue[] {
-  return local.stories.map((story, index) => ({
-    id: `I${index + 1}`,
-    number: index + 10,
-    title: story.title,
-    body: storyBody(story),
-    state: "OPEN",
-    milestoneId: `M${Number(story.milestoneId)}`,
-    labels: [{ id: `L-${story.label}`, name: story.label }],
-  }));
-}
-
-function synced(): RemoteState {
-  return {
-    labels: [{ id: "L-Setup", name: "Setup" }, { id: "L-UI", name: "UI" }],
-    milestones: syncedMilestones(),
-    issues: syncedIssues(),
-    projectIssueIds: new Set(["I1", "I2"]),
-  };
-}
+import { diff } from "../src/sync/diff";
+import { local, synced } from "./fixtures";
 
 describe("diff", () => {
   it("creates everything for an empty repository", () => {
@@ -97,7 +54,7 @@ describe("diff", () => {
     const actions = diff(plan, synced());
     expect(actions).toMatchObject([
       { type: "closeMilestone", number: 2 },
-      { type: "closeIssue", issueId: "I2" },
+      { type: "closeIssue", issueId: "I2", reason: "NOT_PLANNED" },
     ]);
   });
 
@@ -113,6 +70,29 @@ describe("diff", () => {
     const remote = synced();
     remote.issues[1].state = "CLOSED";
     expect(diff(local, remote)).toMatchObject([{ type: "updateIssue", issueId: "I2", changes: ["reopen"] }]);
+  });
+
+  it("closes the issue of a story closed locally", () => {
+    const plan: LocalPlan = { ...local, stories: [{ ...local.stories[0], closed: true }, local.stories[1]] };
+    expect(diff(plan, synced())).toEqual([
+      { type: "closeIssue", issueId: "I1", number: 10, title: "Init", reason: "COMPLETED" },
+    ]);
+  });
+
+  it("overwrites title edits made on GitHub and reopens issues of open stories", () => {
+    const remote = synced();
+    remote.issues[0].state = "CLOSED";
+    remote.issues[0].title = "Edited on GitHub";
+    expect(diff(local, remote)).toMatchObject([
+      { type: "updateIssue", issueId: "I1", changes: ["title", "reopen"] },
+    ]);
+  });
+
+  it("leaves a story closed on both sides alone", () => {
+    const plan: LocalPlan = { ...local, stories: [{ ...local.stories[0], closed: true }, local.stories[1]] };
+    const remote = synced();
+    remote.issues[0].state = "CLOSED";
+    expect(diff(plan, remote)).toEqual([]);
   });
 
   it("adopts unmarked issues by title and keeps unmanaged labels", () => {

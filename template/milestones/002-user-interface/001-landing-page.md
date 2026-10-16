@@ -3,6 +3,7 @@ label: User Interface
 role: guest
 action: see an engaging landing page that explains the app's purpose
 benefit: I understand what the application offers
+state: open
 ---
 
 - [ ] Header navbar section with project name

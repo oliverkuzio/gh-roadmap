@@ -16,7 +16,8 @@ Add scripts to that project's `package.json`:
 {
   "scripts": {
     "roadmap:init": "gh-roadmap init",
-    "roadmap:sync": "gh-roadmap sync"
+    "roadmap:sync": "gh-roadmap sync",
+    "roadmap:sync:down": "gh-roadmap sync down"
   }
 }
 ```
@@ -96,10 +97,13 @@ or a user story, which produces the title "As a guest, I want to log in" and a b
 role: guest
 action: log in
 benefit: I can access my content
+state: open
 ---
 ```
 
 `label` is optional and defaults to the milestone's label.
+
+`state` is `open` or `closed`. Set it to `closed` when a story is finished, and back to `open` to reopen it. A missing `state` counts as `open`.
 
 ### Order
 
@@ -107,17 +111,41 @@ Issues are created in order of their ids (`001-001`, `001-002`, …, `002-001`),
 
 ## Sync
 
+A sync goes one way. Sync up (the default) makes GitHub match the `.project` files. Sync down makes the files match GitHub. Pick the direction based on where the latest changes were made, and sync down before editing files if the board has been used since the last sync.
+
+After every sync, a fingerprint of each synced item is saved in `.project/sync-state.json`. Commit it with the rest of `.project`. It lets sync up tell edits made on GitHub apart from edits made to the files.
+
+### Sync up
+
 ```sh
 pnpm roadmap:sync --dry-run   # preview changes
-pnpm roadmap:sync             # apply them
+pnpm roadmap:sync             # apply them (same as `gh-roadmap sync up`)
 ```
 
 On every run:
 
 - Missing labels, milestones and issues are created. New issues are added to the project in the configured status.
-- Changed titles, descriptions, due dates, labels and milestones are updated. The files are the source of truth, so edits made on GitHub are overwritten.
+- Changed titles, descriptions, due dates, labels and milestones are updated. Edits made on GitHub are overwritten.
+- Issues are closed (as completed) or reopened to match each story's `state`.
 - Labels that aren't managed by `.project` (e.g. `bug`) are left on issues.
 - Issues and milestones whose files were removed are closed. Issues are closed as "not planned". Restoring the file reopens them.
+
+Before changing anything, sync up compares GitHub with the last recorded sync. If titles, bodies, states, roadmap labels, milestones or due dates were edited on GitHub since then, and sync up would overwrite them, it lists them and asks before going ahead. Answer no, then run sync down to pull those edits into the files. Use `--yes` to overwrite without asking; without a terminal to ask in (e.g. CI or an agent), sync up stops instead. If no sync has been recorded yet, every difference is listed, because there's no telling which side changed.
+
+### Sync down
+
+```sh
+pnpm roadmap:sync:down --dry-run   # preview changes
+pnpm roadmap:sync:down             # apply them
+```
+
+Nothing on GitHub is changed. For every story and milestone that already has a file:
+
+- A story's `state`, title, body and label are updated from its issue. Titles and bodies that still read "As a …, I want to … so that …." are written back as `role`, `action` and `benefit`; otherwise the story gets a plain `title`.
+- A milestone's title, description and due date are updated. If its title changes and it has no `label`, the old label is written in so its issues keep their label.
+- Frontmatter keys that didn't change, comments and the order of keys are kept.
+
+Some changes can't be written to the files, so they are printed as warnings instead: issues moved to another milestone, issues with no roadmap label (or more than one), and open issues on the project board that have no story file. Move or create those files by hand.
 
 Each synced issue and milestone has a hidden marker in its description, such as `<!-- gh-roadmap:story:001-002 -->`. The sync uses these markers to match items, so titles can change freely. Items without a marker are never closed. An unmarked issue or milestone whose title exactly matches a local file is adopted, which lets you migrate items created by hand or by earlier versions of this tool.
 
@@ -127,7 +155,7 @@ The project's view layout can't be set through the API. If the sync warns that t
 
 ```
 gh-roadmap init [--dir .project] [--force]
-gh-roadmap sync [--dir .project] [--dry-run]
+gh-roadmap sync [up|down] [--dir .project] [--dry-run] [--yes]
 ```
 
 ## Development

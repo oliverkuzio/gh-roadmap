@@ -3,6 +3,7 @@ label: User Interface
 role: user
 action: navigate the app with a navbar
 benefit: I can easily access different sections of the app
+state: open
 ---
 
 - [ ] Menu links in navbar for primary links/desktop navigation

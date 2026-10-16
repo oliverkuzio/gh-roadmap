@@ -34,7 +34,7 @@ export const CREATE_ISSUE_MUTATION = `
 `;
 
 export const UPDATE_ISSUE_MUTATION = `
-  mutation UpdateIssue($id: ID!, $title: String!, $body: String!, $labelIds: [ID!]!, $milestoneId: ID, $state: IssueState!) {
+  mutation UpdateIssue($id: ID!, $title: String!, $body: String!, $labelIds: [ID!]!, $milestoneId: ID, $state: IssueState) {
     updateIssue(input: {
       id: $id,
       title: $title,
@@ -51,10 +51,10 @@ export const UPDATE_ISSUE_MUTATION = `
 `;
 
 export const CLOSE_ISSUE_MUTATION = `
-  mutation CloseIssue($id: ID!) {
+  mutation CloseIssue($id: ID!, $reason: IssueClosedStateReason!) {
     closeIssue(input: {
       issueId: $id,
-      stateReason: NOT_PLANNED
+      stateReason: $reason
     }) {
       issue {
         id
