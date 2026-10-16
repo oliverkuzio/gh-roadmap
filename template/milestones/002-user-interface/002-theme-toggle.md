@@ -3,6 +3,7 @@ label: User Interface
 role: user
 action: toggle between dark and light themes
 benefit: I can customize the app's appearance to my preference
+state: open
 ---
 
 - [ ] Theme toggle button in navbar/sidebar

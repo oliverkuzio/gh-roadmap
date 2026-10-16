@@ -4,6 +4,7 @@ label: Project Setup
 role:
 action:
 benefit:
+state: open
 ---
 
 - [ ] TypeScript is configured with strict mode

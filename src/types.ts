@@ -4,6 +4,7 @@ export type StoryFrontMatter = {
   role?: string;
   action?: string;
   benefit?: string;
+  state?: "open" | "closed";
 };
 
 export type MilestoneFrontMatter = {
@@ -30,6 +31,8 @@ export type LocalMilestone = {
   description: string;
   label: string;
   dueOn: string | null;
+  // Path to the milestone.md file
+  path: string;
 };
 
 export type LocalStory = {
@@ -38,6 +41,9 @@ export type LocalStory = {
   title: string;
   body: string;
   label: string;
+  closed: boolean;
+  // Path to the story's markdown file
+  path: string;
 };
 
 export type LocalPlan = {

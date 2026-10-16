@@ -3,6 +3,7 @@ title: Final Deployment
 role:
 action:
 benefit:
+state: open
 ---
 
 - [ ] Production environment variables are configured

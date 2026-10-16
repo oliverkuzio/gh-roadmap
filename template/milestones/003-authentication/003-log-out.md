@@ -3,6 +3,7 @@ label: Authentication
 role: user
 action: log out of the application
 benefit: I can secure my account on shared devices
+state: open
 ---
 
 - [ ] Drop down menu displayed after clicking avatar with log out option

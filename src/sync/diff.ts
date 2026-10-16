@@ -43,9 +43,9 @@ export type Action =
   | { type: "createIssue"; story: LocalStory; milestoneNodeId: string | null }
   | { type: "updateIssue"; issueId: string; number: number; story: LocalStory; milestoneNodeId: string | null; labels: string[]; changes: string[] }
   | { type: "addToProject"; issueId: string; number: number; title: string }
-  | { type: "closeIssue"; issueId: string; number: number; title: string };
+  | { type: "closeIssue"; issueId: string; number: number; title: string; reason: "COMPLETED" | "NOT_PLANNED" };
 
-function normalize(text: string | null | undefined): string {
+export function normalize(text: string | null | undefined): string {
   return (text ?? "").replace(/\r\n/g, "\n").trim();
 }
 
@@ -98,6 +98,14 @@ function matchRemotes<R>(
   return { matches, orphans };
 }
 
+export function matchMilestones(local: LocalPlan, remote: Pick<RemoteState, "milestones">) {
+  return matchRemotes(local.milestones, remote.milestones, "milestone", m => m.description, m => m.title, m => m.state === "open");
+}
+
+export function matchIssues(local: LocalPlan, remote: Pick<RemoteState, "issues">) {
+  return matchRemotes(local.stories, remote.issues, "story", issue => issue.body, issue => issue.title, issue => issue.state === "OPEN");
+}
+
 export function milestoneDescription(milestone: LocalMilestone): string {
   return withMarker(milestone.description, "milestone", milestone.id);
 }
@@ -124,14 +132,7 @@ export function diff(local: LocalPlan, remote: RemoteState): Action[] {
   }
 
   // Milestones
-  const milestoneMatch = matchRemotes(
-    local.milestones,
-    remote.milestones,
-    "milestone",
-    m => m.description,
-    m => m.title,
-    m => m.state === "open",
-  );
+  const milestoneMatch = matchMilestones(local, remote);
 
   for (const milestone of local.milestones) {
     const existing = milestoneMatch.matches.get(milestone.id);
@@ -169,14 +170,7 @@ export function diff(local: LocalPlan, remote: RemoteState): Action[] {
     [...milestoneMatch.matches].map(([id, milestone]) => [id, milestone.nodeId]),
   );
 
-  const issueMatch = matchRemotes(
-    local.stories,
-    remote.issues,
-    "story",
-    issue => issue.body,
-    issue => issue.title,
-    issue => issue.state === "OPEN",
-  );
+  const issueMatch = matchIssues(local, remote);
 
   for (const story of local.stories) {
     const existing = issueMatch.matches.get(story.id);
@@ -208,12 +202,15 @@ export function diff(local: LocalPlan, remote: RemoteState): Action[] {
     if (currentLabels.join("\n") !== labels.map(label => label.toLowerCase()).sort().join("\n")) {
       changes.push("labels");
     }
-    if (existing.state !== "OPEN") {
+    if (existing.state !== "OPEN" && !story.closed) {
       changes.push("reopen");
     }
 
     if (changes.length > 0) {
       issueActions.push({ type: "updateIssue", issueId: existing.id, number: existing.number, story, milestoneNodeId, labels, changes });
+    }
+    if (story.closed && existing.state === "OPEN") {
+      issueActions.push({ type: "closeIssue", issueId: existing.id, number: existing.number, title: story.title, reason: "COMPLETED" });
     }
     if (!remote.projectIssueIds.has(existing.id)) {
       projectActions.push({ type: "addToProject", issueId: existing.id, number: existing.number, title: story.title });
@@ -222,7 +219,7 @@ export function diff(local: LocalPlan, remote: RemoteState): Action[] {
 
   for (const orphan of issueMatch.orphans) {
     if (orphan.state === "OPEN") {
-      closeActions.push({ type: "closeIssue", issueId: orphan.id, number: orphan.number, title: orphan.title });
+      closeActions.push({ type: "closeIssue", issueId: orphan.id, number: orphan.number, title: orphan.title, reason: "NOT_PLANNED" });
     }
   }
 
@@ -240,12 +237,12 @@ export function describeAction(action: Action): string {
     case "closeMilestone":
       return `- close milestone "${action.title}"`;
     case "createIssue":
-      return `+ issue ${action.story.id} "${action.story.title}"`;
+      return `+ issue ${action.story.id} "${action.story.title}"${action.story.closed ? " (closed)" : ""}`;
     case "updateIssue":
       return `~ issue #${action.number} ${action.story.id} "${action.story.title}" (${action.changes.join(", ")})`;
     case "addToProject":
       return `+ add issue #${action.number} "${action.title}" to project`;
     case "closeIssue":
-      return `- close issue #${action.number} "${action.title}"`;
+      return `- close issue #${action.number} "${action.title}" (${action.reason === "COMPLETED" ? "completed" : "not planned"})`;
   }
 }
