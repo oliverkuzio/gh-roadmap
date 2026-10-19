@@ -165,7 +165,7 @@ Please add a "Status" single select field to your project.`,
       `No "${statusName}" option found in Status field. Available options: ${statusField.options
         .map(o => o.name)
         .join(", ")}.
-Please add a "${statusName}" option to your Status field, or set "status" in .project/config.json.`,
+Please add a "${statusName}" option to your Status field, or set "status" in .github/project/config.json.`,
     );
   }
 

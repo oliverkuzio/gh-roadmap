@@ -8,13 +8,13 @@ import { sync } from "./commands/sync";
 const USAGE = `Usage: gh-roadmap <command> [options]
 
 Commands:
-  init     Scaffold a .project folder with sample milestones and stories
+  init     Scaffold a .github/project folder with sample milestones and stories
   sync [up|down]
-           up (default): create or update the GitHub project, milestones and issues from .project
-           down: update the .project files from the GitHub milestones and issues
+           up (default): create or update the GitHub project, milestones and issues from .github/project
+           down: update the .github/project files from the GitHub milestones and issues
 
 Options:
-  --dir <path>   Project folder (default: .project)
+  --dir <path>   Project folder (default: .github/project)
   --dry-run      sync: show the changes without making them
   -y, --yes      sync up: overwrite changes made on GitHub without asking
   --force        init: overwrite an existing folder
@@ -23,7 +23,7 @@ Options:
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    "dir": { type: "string", default: ".project" },
+    "dir": { type: "string", default: ".github/project" },
     "dry-run": { type: "boolean", default: false },
     "force": { type: "boolean", default: false },
     "yes": { type: "boolean", short: "y", default: false },

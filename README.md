@@ -1,6 +1,6 @@
 # gh-roadmap
 
-Plan a project as markdown files in a `.project` folder, then sync them to GitHub as native **milestones**, **issues** and a **project board**. Re-running the sync compares the files with GitHub and applies only the differences.
+Plan a project as markdown files in a `.github/project` folder, then sync them to GitHub as native **milestones**, **issues** and a **project board**. Re-running the sync compares the files with GitHub and applies only the differences.
 
 ## Install
 
@@ -30,10 +30,10 @@ Create a GitHub token with the `repo` and `project` scopes [here](https://github
 pnpm roadmap:init
 ```
 
-This copies the sample milestones and stories into `.project/`:
+This copies the sample milestones and stories into `.github/project/`:
 
 ```
-.project/
+.github/project/
   config.json
   milestones/
     001-project-setup/
@@ -45,7 +45,7 @@ This copies the sample milestones and stories into `.project/`:
       001-landing-page.md
 ```
 
-You can commit `.project/` so the plan lives with the code, or add it to `.gitignore`.
+You can commit `.github/project/` so the plan lives with the code, or add it to `.gitignore`. To keep the plan somewhere else (e.g. if a `CODEOWNERS` rule requires reviews for changes under `.github/`), pass `--dir` to every command.
 
 ### config.json
 
@@ -111,9 +111,9 @@ Issues are created in order of their ids (`001-001`, `001-002`, …, `002-001`),
 
 ## Sync
 
-A sync goes one way. Sync up (the default) makes GitHub match the `.project` files. Sync down makes the files match GitHub. Pick the direction based on where the latest changes were made, and sync down before editing files if the board has been used since the last sync.
+A sync goes one way. Sync up (the default) makes GitHub match the `.github/project` files. Sync down makes the files match GitHub. Pick the direction based on where the latest changes were made, and sync down before editing files if the board has been used since the last sync.
 
-After every sync, a fingerprint of each synced item is saved in `.project/sync-state.json`. Commit it with the rest of `.project`. It lets sync up tell edits made on GitHub apart from edits made to the files.
+After every sync, a fingerprint of each synced item is saved in `.github/project/sync-state.json`. Commit it with the rest of `.github/project`. It lets sync up tell edits made on GitHub apart from edits made to the files.
 
 ### Sync up
 
@@ -127,7 +127,7 @@ On every run:
 - Missing labels, milestones and issues are created. New issues are added to the project in the configured status.
 - Changed titles, descriptions, due dates, labels and milestones are updated. Edits made on GitHub are overwritten.
 - Issues are closed (as completed) or reopened to match each story's `state`.
-- Labels that aren't managed by `.project` (e.g. `bug`) are left on issues.
+- Labels that aren't managed by `.github/project` (e.g. `bug`) are left on issues.
 - Issues and milestones whose files were removed are closed. Issues are closed as "not planned". Restoring the file reopens them.
 
 Before changing anything, sync up compares GitHub with the last recorded sync. If titles, bodies, states, roadmap labels, milestones or due dates were edited on GitHub since then, and sync up would overwrite them, it lists them and asks before going ahead. Answer no, then run sync down to pull those edits into the files. Use `--yes` to overwrite without asking; without a terminal to ask in (e.g. CI or an agent), sync up stops instead. If no sync has been recorded yet, every difference is listed, because there's no telling which side changed.
@@ -154,8 +154,8 @@ The project's view layout can't be set through the API. If the sync warns that t
 ## Options
 
 ```
-gh-roadmap init [--dir .project] [--force]
-gh-roadmap sync [up|down] [--dir .project] [--dry-run] [--yes]
+gh-roadmap init [--dir .github/project] [--force]
+gh-roadmap sync [up|down] [--dir .github/project] [--dry-run] [--yes]
 ```
 
 ## Development
@@ -165,6 +165,6 @@ pnpm install
 pnpm test
 pnpm typecheck
 pnpm lint
-pnpm dev:init --dir scratch/.project
-pnpm dev:sync --dir scratch/.project --dry-run
+pnpm dev:init --dir scratch/.github/project
+pnpm dev:sync --dir scratch/.github/project --dry-run
 ```
