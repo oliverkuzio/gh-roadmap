@@ -3,7 +3,7 @@
   "type": "module",
   "version": "1.0.0",
   "packageManager": "pnpm@10.5.2",
-  "description": "Plan milestones and stories as markdown in a .github/project folder and sync them to GitHub milestones, issues and a project board",
+  "description": "Plan milestones and stories as markdown in a .github/roadmap folder and sync them to GitHub milestones, issues and a project board",
   "author": "Oliver Kuzio",
   "license": "MIT",
   "keywords": [
