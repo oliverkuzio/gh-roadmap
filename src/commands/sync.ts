@@ -111,7 +111,7 @@ export async function sync({ dir, dryRun, direction, yes }: {
   }
 
   if (overwrites.length > 0 && !yes && !(await confirm("Overwrite the changes on GitHub?"))) {
-    console.log("Nothing was changed. Run \"gh-roadmap sync down\" to pull the GitHub changes into .project first.");
+    console.log("Nothing was changed. Run \"gh-roadmap sync down\" to pull the GitHub changes into .github/project first.");
     return;
   }
 
@@ -138,7 +138,7 @@ async function confirm(question: string): Promise<boolean> {
   }
 }
 
-// Updates the .project files from GitHub. Nothing on GitHub is changed.
+// Updates the .github/project files from GitHub. Nothing on GitHub is changed.
 async function syncDown({ dir, dryRun, owner, repo, projectTitle, local }: {
   dir: string;
   dryRun: boolean;
