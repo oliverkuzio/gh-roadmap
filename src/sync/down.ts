@@ -33,7 +33,7 @@ export function parseUserStory(title: string, body: string) {
   return { role, action, benefit: rest.slice(0, end), description: rest.slice(end + 1).trim() };
 }
 
-// Works out how the .github/project files change to match GitHub. Only items that already have a file
+// Works out how the .github/roadmap files change to match GitHub. Only items that already have a file
 // are updated; anything that can't be expressed in the files is returned as a warning.
 export function diffDown(
   local: LocalPlan,
