@@ -15,7 +15,7 @@ function gitRemote(cwd: string): { owner: string; repo: string } | null {
   }
 }
 
-// Owner/repo come from .github/project/config.json, then GITHUB_OWNER/GITHUB_REPO, then the git "origin" remote.
+// Owner/repo come from .github/roadmap/config.json, then GITHUB_OWNER/GITHUB_REPO, then the git "origin" remote.
 export function resolveRepo(config: Partial<Config>, cwd: string): { owner: string; repo: string } | null {
   const remote = gitRemote(cwd);
   const owner = config.owner || process.env.GITHUB_OWNER || remote?.owner;
